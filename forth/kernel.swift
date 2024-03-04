@@ -66,13 +66,13 @@ public typealias FCell = Int
 public typealias FChar = UInt8
 
 /// Number of characters in a cell (32 bits / 8 bits)
-public let FCharsPerCell = 8 //4
+public let FCharsPerCell = 4
 
 /// An "address" is an index into the dictionary
 ///
 /// Defined as Int so we can avoid typecasts when we use this type
 /// as a subscript index or comparison to an index.  Note that 64-bit
-/// Intvalues will be squashed to Int  when placed in a cell, but
+/// Int values will be squashed to Int when placed in a cell, but
 /// that should be OK because all our addresses will fit in 32 bits.
 public typealias FAddress = Int
 
@@ -82,8 +82,8 @@ func asCell(x: FAddress) -> FCell    { return FCell(x) }
 func asCell(x: FChar) -> FCell       { return FCell(x) }
 func asAddress(x: FCell) -> FAddress { return FAddress(x) }
 func asAddress(x: FChar) -> FAddress { return FAddress(x) }
-func asChar(x: FCell) -> FChar       { return FChar(x) }
-func asChar(x: FAddress) -> FChar    { return FChar(x) }
+func asFChar(x: FCell) -> FChar       { return FChar(x) }
+func asFChar(a: FAddress) -> FChar    { return FChar(a) }
 
 // Given tuple of two cells, typecast to an (address, count) tuple
 func asAddressAndCount(x1: FCell, x2: FCell) -> (FAddress, Int) {
@@ -1762,7 +1762,7 @@ public final class ForthMachine {
     /// /MOD ( n1 n2 -- n3 n4 )
     public func DIVMOD() {
         let (n1, n2) = pop2()
-        let result = div(n1, n2)
+        let result = div(Int32(n1), Int32(n2))
         (result.rem, result.quot) |> push
     }
 
