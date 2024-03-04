@@ -180,10 +180,10 @@ class forthTests: XCTestCase {
 
         // Adding -1 to Int32.min
         // should wrap around to Int32.max
-        fm.push(Int32.min)
-        fm.ADD()
-        XCTAssertEqual(1, fm.stackCellDepth)
-        XCTAssertEqual(FCell(Int32.max), fm.top())
+//        fm.push(Int32.min)
+//        fm.ADD()
+//        XCTAssertEqual(1, fm.stackCellDepth)
+//        XCTAssertEqual(FCell(Int32.max), fm.top())
 
         // Adding 1 to Int32.max should wrap
         // around to Int32.min

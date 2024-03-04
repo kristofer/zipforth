@@ -36,7 +36,12 @@ import Foundation
 /// This operator is especially appropriate for implementing FORTH, as it lets us
 /// use FORTH-like postfix function application in Swift.
 
-infix operator |> { associativity left }
+precedencegroup SingleFowardPipe {
+    associativity: left
+    higherThan: BitwiseShiftPrecedence
+}
+
+infix operator |> : SingleFowardPipe
 
 public func |> <T,U>(lhs: T, rhs: (T) -> U) -> U {
     return rhs(lhs)
@@ -46,7 +51,7 @@ public func |> <T,U>(lhs: T, rhs: (T) -> U) -> U {
 // MARK: - FORTH data types
 
 /// Each FORTH "cell" is a 32-bit signed integer value
-public typealias FCell = Int32
+public typealias FCell = Int
 
 /// The FORTH dictionary is an array of 8-bit bytes
 ///
@@ -61,13 +66,13 @@ public typealias FCell = Int32
 public typealias FChar = UInt8
 
 /// Number of characters in a cell (32 bits / 8 bits)
-public let FCharsPerCell = 4
+public let FCharsPerCell = 8 //4
 
 /// An "address" is an index into the dictionary
 ///
 /// Defined as Int so we can avoid typecasts when we use this type
 /// as a subscript index or comparison to an index.  Note that 64-bit
-/// Int values will be squashed to Int32 when placed in a cell, but
+/// Intvalues will be squashed to Int  when placed in a cell, but
 /// that should be OK because all our addresses will fit in 32 bits.
 public typealias FAddress = Int
 
@@ -191,13 +196,13 @@ public final class ForthMachine {
     public struct Options {
         /// Number of bytes reserved for the FORTH dictionary and stacks; defaults to 64 Kbytes
         ///
-        /// The maximum valid value is Int32.max.
-        public var dataSpaceCharCount: Int = 64 * 1024
+        /// The maximum valid value is Int .max.
+        public var dataSpaceCharCount: Int  = 64 * 1024
 
         /// Number of bytes reserved for the return stack; defaults to 4K
         ///
         /// The return stack region is allocated at the top of the data space.
-        public var returnStackCharCount: Int = 4 * 1024
+        public var returnStackCharCount: Int  = 4 * 1024
 
         /// If true, debug trace information is sent to standard output during execution
         public var isTraceEnabled = false
@@ -239,7 +244,7 @@ public final class ForthMachine {
         /// Note that this is only legal if size >= FBytesPerCell.
         var value: FCell {
             get             { return machine!.cellAtAddress(address) }
-            nonmutating set { machine!.storeToAddress(address, cellValue: newValue) }
+            nonmutating set { machine!.storeToAddress(address, newValue) }
         }
 
         /// Get/set the value of the variable as an Address
@@ -251,8 +256,8 @@ public final class ForthMachine {
         }
 
         /// Increment the value
-        func incrementBy(n: Int) {
-            self.value = self.value + n
+        func incrementBy(_ n: Int) {
+            self.value = self.value + Int (n)
         }
     }
     
@@ -333,7 +338,7 @@ public final class ForthMachine {
 
     /// The number of cells currently on the return stack
     public var returnStackCellDepth: Int {
-        return (dataSpace.count - rsp) / FCharsPerCell
+        return Int ((dataSpace.count - rsp) / FCharsPerCell)
     }
     
     /// Data stack pointer (`%esp` in jonesforth.S)
@@ -372,7 +377,7 @@ public final class ForthMachine {
 
     /// The number of cells currently on the data stack
     public var stackCellDepth: Int {
-        return (s0.valueAsAddress - sp) / FCharsPerCell
+        return Int ((s0.valueAsAddress - sp) / FCharsPerCell)
     }
 
     /// Instruction pointer (`%esi` in jonesforth.S)
@@ -420,7 +425,7 @@ public final class ForthMachine {
         machine: self,
         address: 8,
         size: FCharsPerCell,
-        initialValue: (self.dataSpace.count - self.options.returnStackCharCount) |> asCell)
+        initialValue: (self.dataSpace.count - Int(self.options.returnStackCharCount)) |> asCell)
 
     /// FORTH variable `STATE` indicating whether interpreter is executing (false) or compiling (true)
     lazy var state: BuiltInVariable = BuiltInVariable(
@@ -452,7 +457,7 @@ public final class ForthMachine {
         machine: self,
         address: self.wordBuffer.address + self.WordBufferLength,
         size: FCharsPerCell,
-        initialValue: self.wordBuffer.address + self.wordBuffer.size + 4)
+        initialValue: FCell(self.wordBuffer.address + self.wordBuffer.size + 4))
 
 
     // MARK: - Initialization
@@ -463,12 +468,10 @@ public final class ForthMachine {
 
         self.isTraceEnabled = options.isTraceEnabled
 
-        self.dataSpace = Array(
-            count:         options.dataSpaceCharCount,
-            repeatedValue: 0)
+        self.dataSpace = [FChar](repeating: 0, count: Int(options.dataSpaceCharCount))
 
         self.rsp = self.dataSpace.count
-        self.sp = self.dataSpace.count - options.returnStackCharCount
+        self.sp = self.dataSpace.count - Int(options.returnStackCharCount)
 
         self.ip = 0
 
@@ -498,14 +501,14 @@ public final class ForthMachine {
         let addressAtIP = cellAtAddress(ip) |> asAddress
         let codeword = cellAtAddress(addressAtIP)
         advanceInstructionPointer()
-        executeCodeWord(codeword, codeFieldAddress: addressAtIP)
+        executeCodeWord(codeword, addressAtIP)
     }
 
 
     // MARK: - Stack manipulation
 
     /// Push a cell value onto the data stack
-    public func push(x: FCell) {
+    public func push(_ x: FCell) {
         assert(sp % FCharsPerCell == 0, "stack pointer must be cell-aligned for push")
 
         sp -= FCharsPerCell
@@ -521,7 +524,7 @@ public final class ForthMachine {
     ///
     /// Results are indeterminate if the value of `depth` is not in the
     /// range `0..<stackCellDepth`.
-    public func pick(depth: Int) -> FCell {
+    public func pick(_ depth: Int) -> FCell {
         assert(sp % FCharsPerCell == 0, "stack pointer must be cell-aligned for pick")
 
         let address = sp + (depth * FCharsPerCell)
@@ -530,7 +533,7 @@ public final class ForthMachine {
     }
 
     /// Drop the specified number of values from the data stack
-    public func dropCells(count: Int) {
+    public func dropCells(_ count: Int) {
         sp += count * FCharsPerCell
     }
 
@@ -542,17 +545,17 @@ public final class ForthMachine {
     }
     
     /// Push two values onto the stack
-    public func push(x1: FCell, _ x2: FCell) {
+    public func push(_ x1: FCell, _ x2: FCell) {
         push(x1); push(x2)
     }
 
     /// Push three values onto the stack
-    public func push(x1: FCell, _ x2: FCell, _ x3: FCell) {
+    public func push(_ x1: FCell, _ x2: FCell, _ x3: FCell) {
         push(x1); push(x2); push(x3)
     }
 
     /// Push four values onto the stack
-    public func push(x1: FCell, _ x2: FCell, _ x3: FCell, _ x4: FCell) {
+    public func push(_ x1: FCell, _ x2: FCell, _ x3: FCell, _ x4: FCell) {
         push(x1); push(x2); push(x3); push(x4)
     }
 
@@ -613,7 +616,7 @@ public final class ForthMachine {
     // MARK: - Return stack manipulation
 
     /// Push a cell value onto the return stack
-    public func pushReturn(x: FCell) {
+    public func pushReturn(_ x: FCell) {
         assert(rsp % FCharsPerCell == 0, "return stack pointer must be cell-aligned for pushReturn")
 
         rsp -= FCharsPerCell
@@ -629,7 +632,7 @@ public final class ForthMachine {
     ///
     /// Results are indeterminate if the value of `depth` is not in the
     /// range `0..<returnStackCellDepth`.
-    public func pickReturn(depth: Int) -> FCell {
+    public func pickReturn(_ depth: Int) -> FCell {
         assert(rsp % FCharsPerCell == 0, "return stack pointer must be cell-aligned for pickReturn")
 
         let address = rsp + (depth * FCharsPerCell)
@@ -638,7 +641,7 @@ public final class ForthMachine {
     }
 
     /// Drop the specified number of values from the return stack
-    public func dropReturnCells(count: Int) {
+    public func dropReturnCells(_ count: Int) {
         rsp += count * FCharsPerCell
     }
 
@@ -670,13 +673,13 @@ public final class ForthMachine {
     // MARK: - Data-space operations
 
     /// Return a pointer to the byte at a specified data-space address
-    func immutablePointerForDataAddress(address: FAddress) -> UnsafePointer<FChar> {
+    func immutablePointerForDataAddress(_ address: FAddress) -> UnsafePointer<FChar> {
         return UnsafePointer<FChar>(dataSpace) + address
     }
 
     /// Return a pointer to the byte at a specified data-space address
-    func mutablePointerForDataAddress(address: FAddress) -> UnsafeMutablePointer<FChar> {
-        return UnsafeMutablePointer<FChar>(dataSpace) + address
+    func mutablePointerForDataAddress(_ address: FAddress) -> UnsafeMutablePointer<FChar> {
+        return UnsafeMutablePointer<FChar>(mutating: dataSpace) + address
     }
 
     /// Called on attempt to read from an invalid data-space address
@@ -696,7 +699,7 @@ public final class ForthMachine {
     /// This is public so that unit tests and debuggers can read the data
     /// space.  Applications should use the standard FORTH memory access
     /// words.
-    public func cellAtAddress(address: FAddress) -> FCell {
+    public func cellAtAddress(_ address: FAddress) -> FCell {
         if (0 <= address) && (address <= dataSpace.count - FCharsPerCell) {
             // Reading a cell from an unaligned address will actually work fine,
             // but it is a violation of the rules and probably indicates a
@@ -721,7 +724,7 @@ public final class ForthMachine {
     /// This is public so that unit tests and debuggers can read the data
     /// space.  Applications should use the standard FORTH memory access
     /// words.
-    func charAtAddress(address: FAddress) -> FChar {
+    func charAtAddress(_ address: FAddress) -> FChar {
         if 0 <= address && address < dataSpace.count {
             let pointer = UnsafePointer<FChar>(immutablePointerForDataAddress(address))
             let cell = pointer.memory
@@ -734,7 +737,7 @@ public final class ForthMachine {
     }
 
     /// Create a null-terminated array of CChar using the specified bytes
-    func CStringAtAddress(address: FAddress, length: Int) -> [CChar] {
+    func CStringAtAddress(_ address: FAddress, _ length: Int) -> [CChar] {
         var result = Array<CChar>(count: length + 1, repeatedValue: 0)
         for i in 0..<length {
             result[i] = CChar(charAtAddress(address + i))
@@ -743,11 +746,11 @@ public final class ForthMachine {
     }
 
     /// Convert a FORTH string to a Swift String
-    func stringAtAddress(address: FAddress, length: Int) -> String? {
-        return String.fromCString(CStringAtAddress(address, length: length))
+    func stringAtAddress(_ address: FAddress, _ length: Int) -> String? {
+        return String.fromCString(CStringAtAddress(address, length))
     }
 
-    func storeToAddress(address: FAddress, cellValue: FCell) {
+    func storeToAddress(_ address: FAddress, _ cellValue: FCell) {
         if 0 <= address && address <= (dataSpace.count - 4) {
             let pointer = UnsafeMutablePointer<FCell>(mutablePointerForDataAddress(address))
             pointer.memory = cellValue
@@ -757,7 +760,7 @@ public final class ForthMachine {
         }
     }
 
-    func storeToAddress(address: FAddress, charValue: FChar) {
+    func storeToAddress(_ address: FAddress, _ charValue: FChar) {
         if 0 <= address && address < dataSpace.count {
             let pointer = UnsafeMutablePointer<FChar>(mutablePointerForDataAddress(address))
             pointer.memory = charValue
@@ -768,31 +771,31 @@ public final class ForthMachine {
     }
 
     // Curried form of storeToAddress(, charValue:)
-    func storeCharToAddress(address: FAddress)(char: FChar) {
-        storeToAddress(address, charValue: char)
+    func storeCharToAddress(_ address: FAddress) -> (FChar) {
+        storeToAddress(address, char)
     }
 
     // Curried form of storeToAddress(, cellValue:)
-    func storeCellToAddress(address: FAddress)(cell: FCell) {
+    func storeCellToAddress(_ address: FAddress) -> (FCell) {
         storeToAddress(address, cellValue: cell)
     }
 
     /// Store a cell to HERE, and increment HERE by the size of a cell
-    func addCellHere(cellValue: FCell) {
-        storeToAddress(here.valueAsAddress, cellValue: cellValue)
+    func addCellHere(_ cellValue: FCell) {
+        storeToAddress(here.valueAsAddress, cellValue)
         here.incrementBy(FCharsPerCell)
     }
 
     /// Store a cell to HERE, and increment HERE by the size of a cell
-    func addCellHere(intValue: Int) {
+    func addCellHere(_ intValue: Int) {
         assert(intValue >= Int(FCell.min))
         assert(intValue <= Int(FCell.max))
         addCellHere(FCell(intValue))
     }
 
     /// Store a byte to HERE, and increment HERE by 1
-    func addCharHere(charValue: FChar) {
-        storeToAddress(here.valueAsAddress, charValue: charValue)
+    func addCharHere(_ charValue: FChar) {
+        storeToAddress(here.valueAsAddress, charValue)
         here.incrementBy(1)
     }
 
@@ -802,7 +805,7 @@ public final class ForthMachine {
     /// by the characters of the name.
     ///
     /// If length is greater than 31, it will be truncated to 31
-    func addLengthAndNameHere(nameAddress: FAddress, length: Int) {
+    func addLengthAndNameHere(_ nameAddress: FAddress, length: Int) {
         let validLength = min(length, MaxNameLength)
         addCharHere(FChar(validLength))
         for i in 0..<validLength {
@@ -817,7 +820,7 @@ public final class ForthMachine {
     ///
     /// If the name's length is greater than 31, it will be truncated
     /// to 31 bytes.
-    func addLengthAndNameHere(name: String, flags: FCell) {
+    func addLengthAndNameHere(_ name: String, _ flags: FCell) {
         let characters = Array(name.utf8)
         let validLength = min(characters.count, MaxNameLength)
         addCharHere(FChar(validLength) | FChar(flags))
@@ -827,12 +830,12 @@ public final class ForthMachine {
     }
 
     /// Given an address, return address on a cell boundary
-    func alignedCellAddress(address: FAddress) -> FAddress {
+    func alignedCellAddress(_ address: FAddress) -> FAddress {
         return (address + 3) & ~0x03
     }
 
     /// Determine whether a given address is aligned on a cell boundary
-    func isCellAlignedAddress(address: FAddress) -> Bool {
+    func isCellAlignedAddress(_ address: FAddress) -> Bool {
         return (address % FCharsPerCell) == 0
     }
 
@@ -855,7 +858,7 @@ public final class ForthMachine {
     /// Create a new dictionary entry header for the specified name
     ///
     /// When this method completes, HERE will point to the codeword field.
-    func createEntryForNameAtAddress(address: FAddress, length: Int) {
+    func createEntryForNameAtAddress(_ address: FAddress, _ length: Int) {
         alignHere()
 
         // Link
@@ -870,7 +873,7 @@ public final class ForthMachine {
     }
 
     /// Add definition of specified primitive operation to the dictionary
-    func defcode(name: String, _ primitive: Primitive, flags: FCell = 0) {
+    func defcode(_ name: String, _ primitive: Primitive, flags: FCell = 0) {
         // Register name for tracing purposes
         let opcode = primitive.rawValue
         if opcode != Primitive.DOCOL.rawValue {
@@ -885,7 +888,7 @@ public final class ForthMachine {
         latest.valueAsAddress = start
 
         // Length and name
-        addLengthAndNameHere(name, flags: flags)
+        addLengthAndNameHere(name, flags)
 
         // code field
         alignHere()
@@ -899,13 +902,13 @@ public final class ForthMachine {
     /// appends the code field addresses of the specified words.
     ///
     /// In general, the word in the definition should be "EXIT".
-    func defword(name: String, _ words: [String], flags: FCell = 0) {
+    func defword(_ name: String, _ words: [String], flags: FCell = 0) {
         defcode(name, .DOCOL, flags: flags)
         defwordContinue(words)
     }
 
     /// Continue a word definition started by defword()
-    func defwordContinue(words: [String]) {
+    func defwordContinue(_ words: [String]) {
         for word in words {
             let cfa = codeFieldAddressForEntryWithName(word)
             if cfa == 0 {
@@ -948,7 +951,7 @@ public final class ForthMachine {
     }
 
     /// Low-level I/O function that writes a byte to output stream
-    func writeChar(c: FChar) {
+    func writeChar(_ c: FChar) {
         writeChar(FCell(c))
     }
 
@@ -965,7 +968,7 @@ public final class ForthMachine {
     }
 
     /// Send the specified message to the error stream and exit the program
-    public func abortWithMessage(message: String) {
+    public func abortWithMessage(_ message: String) {
         fputs("abort: \(message)\n", stderr)
         abort()
     }
@@ -1013,7 +1016,7 @@ public final class ForthMachine {
             }
 
             FChar(ch) |> storeCharToAddress(buffer + count)
-            ++count
+            count += 1
             ch = readChar()
         }
 
@@ -1024,7 +1027,7 @@ public final class ForthMachine {
     /// Place a string in the WORD buffer, and push its address and length to the stack
     ///
     /// This method is used by unit tests to simulate reading of a word.
-    public func setWord(s: String) {
+    public func setWord(_ s: String) {
         let chars: [FChar] = Array(s.utf8)
         assert(chars.count <= WordBufferLength)
         for i in 0..<chars.count {
@@ -1054,7 +1057,7 @@ public final class ForthMachine {
         let firstChar = charAtAddress(address) |> asCell
         if firstChar == Char_Minus {
             isNegative = true
-            ++i
+            i += 1
             if i >= length {
                 // string is only "-"
                 return (0, 1)
@@ -1089,7 +1092,7 @@ public final class ForthMachine {
             }
 
             if !unparseable {
-                ++i
+                i += 1
             }
         }
 
@@ -1117,7 +1120,7 @@ public final class ForthMachine {
     /// 2. Add a case to the switch in `execute()`.
     /// 3. If the primitive is user-callable, add something appropriate to `addBuiltinsToDictionary()`.
 
-    public enum Primitive: Int {
+    public enum Primitive: Int{
         case UNDEFINED_PRIMITIVE    // = 0
 
         case DOCOL
@@ -1223,11 +1226,11 @@ public final class ForthMachine {
     /// Run the code at the specified code field address
     public func executeCodeFieldAddress(codeFieldAddress: FAddress) {
         let codeword = cellAtAddress(codeFieldAddress)
-        executeCodeWord(codeword, codeFieldAddress: codeFieldAddress)
+        executeCodeWord(codeword, codeFieldAddress)
     }
 
     /// Run the primitive code associated with a codeword
-    public func executeCodeWord(codeword: FCell, codeFieldAddress: FAddress) {
+    public func executeCodeWord(_ codeword: FCell, _ codeFieldAddress: FAddress) {
         
         trace("execute(\(nameForOpcode(Int(codeword))) @ \(codeFieldAddress))")
 
@@ -1499,7 +1502,7 @@ public final class ForthMachine {
     }
 
     /// Called by `execute()` for an undefined codeword value.
-    func executeUndefinedCodeword(codeword: FCell) {
+    func executeUndefinedCodeword(_ codeword: FCell) {
         assert(false, "\(codeword) is not a valid codeword")
     }
 
@@ -1508,7 +1511,7 @@ public final class ForthMachine {
     /// Pushes the current instruction pointer value to the return stack,
     /// then sets the instruction pointer to point to the cell following the
     /// one that refers to the DOCOL codeword.
-    func DOCOL(codeFieldAddress: FAddress) {
+    func DOCOL(_ codeFieldAddress: FAddress) {
         trace("DOCOL: \(nameForCodeFieldAddress(codeFieldAddress)); return=\(ip)")
 
         pushReturn(FCell(ip))
@@ -1555,7 +1558,7 @@ public final class ForthMachine {
     /// FORTH data space.
     ///
     /// Returns 0 if not found, or nonzero data-space address if found.
-    func findEntryWithName(name: String) -> FAddress {
+    func findEntryWithName(_ name: String) -> FAddress {
         // Convert name to array of FChar
         let chars: [FChar] = Array(name.utf8)
         let length = chars.count
@@ -1583,7 +1586,7 @@ public final class ForthMachine {
     }
 
     /// Determine whether strings at specified address have identical contents
-    func areEqualStringsOfLength(length: Int, _ s1: FAddress, _ s2: FAddress) -> Bool {
+    func areEqualStringsOfLength(_ length: Int, _ s1: FAddress, _ s2: FAddress) -> Bool {
         for i in 0..<length {
             if charAtAddress(s1 + i) != charAtAddress(s2 + i) {
                 return false
@@ -1593,17 +1596,17 @@ public final class ForthMachine {
     }
 
     /// Get the address of the code field (CFA) for the dictionary entry that starts at the specified address
-    public func lengthAndFlagsFieldAddressForEntryAtAddress(entryAddress: FAddress) -> FAddress {
+    public func lengthAndFlagsFieldAddressForEntryAtAddress(_ entryAddress: FAddress) -> FAddress {
         return entryAddress + FCharsPerCell
     }
 
     /// Get the address of the code field (CFA) for the dictionary entry that starts at the specified address
-    public func nameFieldAddressForEntryAtAddress(entryAddress: FAddress) -> FAddress {
+    public func nameFieldAddressForEntryAtAddress(_ entryAddress: FAddress) -> FAddress {
         return lengthAndFlagsFieldAddressForEntryAtAddress(entryAddress) + 1
     }
 
     /// Get the address of the code field (CFA) for the dictionary entry that starts at the specified address
-    public func codeFieldAddressForEntryAtAddress(entryAddress: FAddress) -> FAddress {
+    public func codeFieldAddressForEntryAtAddress(_ entryAddress: FAddress) -> FAddress {
         let lengthAddress = lengthAndFlagsFieldAddressForEntryAtAddress(entryAddress)
         let nameAddress = lengthAddress + 1
 
@@ -1614,7 +1617,7 @@ public final class ForthMachine {
         return codeFieldAddress
     }
 
-    public func codeFieldAddressForEntryWithName(name: String) -> FAddress {
+    public func codeFieldAddressForEntryWithName(_ name: String) -> FAddress {
         let entryAddress = findEntryWithName(name)
         return entryAddress == 0 ? 0 : codeFieldAddressForEntryAtAddress(entryAddress)
     }
@@ -2369,7 +2372,7 @@ public final class ForthMachine {
     /// Write a debug trace message if trace messages are enabled
     ///
     /// This is controlled by the `isTraceEnabled` property
-    func trace(@autoclosure message: () -> String) {
+    func trace(_ message: () -> String) {
         if isTraceEnabled {
             var prefix = ""
             for _ in 0..<returnStackCellDepth {
@@ -2384,7 +2387,7 @@ public final class ForthMachine {
     ///
     /// This is only used for trace messages and other diagnostic purposes.
     /// It is not used by the Forth interpreter.
-    var _nameForOpcode: [Int : String] = Dictionary()
+    var _nameForOpcode: [Int: String] = Dictionary()
 
     /// Return human-readable name for opcode
     func nameForOpcode(opcode: Int) -> String {
